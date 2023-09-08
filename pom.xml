@@ -1,0 +1,53 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<groupId>dbaas</groupId>
+	<artifactId>dbaas</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<build>
+		<sourceDirectory>src</sourceDirectory>
+		<plugins>
+			<plugin>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<version>3.8.0</version>
+				<configuration>
+					<source>1.8</source>
+					<target>1.8</target>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+
+
+
+	<dependencies>
+		<dependency>
+			<groupId>com.couchbase.client</groupId>
+			<artifactId>java-client</artifactId>
+			<version>3.4.10</version>
+		</dependency>
+		<!-- Dependencies for gson -->
+		<dependency>
+			<groupId>com.google.code.gson</groupId>
+			<artifactId>gson</artifactId>
+			<version>2.8.5</version>
+		</dependency>
+
+		<!-- Dependencies for JFairy -->
+		<dependency>
+			<groupId>io.codearte.jfairy</groupId>
+			<artifactId>jfairy</artifactId>
+			<version>0.5.9</version>
+		</dependency>
+		
+		<dependency>
+			<groupId>org.slf4j</groupId>
+			<artifactId>slf4j-jdk14</artifactId>
+    		<version>1.7.25</version>
+		</dependency>
+	</dependencies>
+
+
+
+</project>
