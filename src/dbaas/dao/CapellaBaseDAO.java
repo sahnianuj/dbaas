@@ -5,8 +5,12 @@ package dbaas.dao;
 import com.couchbase.client.core.env.CertificateAuthenticator;
 
 import com.couchbase.client.core.error.DocumentNotFoundException;
+import com.couchbase.client.core.error.IndexExistsException;
 import com.couchbase.client.java.*;
 import com.couchbase.client.java.kv.*;
+import com.couchbase.client.java.manager.query.BuildQueryIndexOptions;
+import com.couchbase.client.java.manager.query.WatchQueryIndexesOptions;
+import com.couchbase.client.java.query.QueryResult;
 import com.couchbase.client.java.json.*;
 
 import java.io.FileInputStream;
@@ -15,6 +19,7 @@ import java.security.KeyStore;
 
 
 import java.time.Duration;
+import java.util.Hashtable;
 import java.util.Optional;
 
 public class CapellaBaseDAO {
@@ -22,15 +27,16 @@ public class CapellaBaseDAO {
 	private static Cluster cluster = null;
 
 	//TODO - Change them before running the main method
-	protected static String endpoint = "ec2.us-west-2.compute.amazonaws.com";
-	protected static String bucketName = "<bucket-name>";
-	private static String username = "<db-username>";
-	private static String password = "<password>";
+	protected static String endpoint = "34.222.138.192";
+	protected static String bucketName = "demo";
+	private static String username = "testdb";
+	private static String password = "password";
 
-	private static String certStorePath = "<ca.pem location>";
+	private static String certPath = "/Users/anuj.sahni/couchbase/certs/demo-ca.pem";
 	private static String keystorePath = "<keystore-path>";
 	private static String keystorePass = "<keystore-pass>";
 
+	private static Hashtable<String, Bucket> buckets = new Hashtable<String, Bucket>();
 
 	/**
 	 * This method authenticate using RBAC user credetials and uses root certificate
@@ -41,21 +47,25 @@ public class CapellaBaseDAO {
 	 * @param password - db user password
 	 * @return Cluster object
 	 */
-	public static synchronized Cluster getClusterFromRootCert(String endpoint, String username, String password) {
+	public static synchronized Cluster getClusterFromRootCert(String endpoint, 
+			String username, String password, String certPath) {
 		//singleton pattern on Cluster object
 		if(cluster == null){
+			System.out.println("Inside getClusterFromRootCert() method, where it "
+					+ "will use username/password and certPath will be used to "
+					+ "connect securely.");
 			cluster = Cluster.connect(
 					endpoint,
 					ClusterOptions.clusterOptions(username, password)
 					.environment(env -> env
 							.securityConfig(security -> security
-									.trustCertificate(Paths.get(certStorePath))
+									.trustCertificate(Paths.get(certPath))
 									)
 							)
 					);
 		}
 		return cluster;
-	}//getClusterFromPem()
+	}//getClusterFromRootCert()
 
 
 	/**
@@ -113,7 +123,7 @@ public class CapellaBaseDAO {
 				keyStore.load(new FileInputStream(keyStorePath), keystorePass.toCharArray());
 
 				System.out.println("Keystore loaded successfully and found " + keyStore.size() + " certificates.");
-//				System.out.println( keyStore.getCertificate("selfsigned"));
+				//				System.out.println( keyStore.getCertificate("selfsigned"));
 
 				CertificateAuthenticator authenticator = CertificateAuthenticator.fromKeyStore(keyStore, keystorePass);
 				cluster = Cluster.connect(endpoint, ClusterOptions.clusterOptions(authenticator)
@@ -130,6 +140,8 @@ public class CapellaBaseDAO {
 		}
 		return cluster;
 	}//getClusterFromClientCert()
+
+
 
 	/**
 	 * This method writes the JsonObject object into the collection
@@ -192,11 +204,39 @@ public class CapellaBaseDAO {
 		}//EOF if
 	}
 
+	
+
+	public static Bucket getBucket(Cluster cluster, String bucketName) {
+
+		Bucket bucket = null;
+		if(buckets.containsKey(bucketName)) {
+			bucket = buckets.get(bucketName);
+		}else {
+			bucket = cluster.bucket(bucketName);
+			bucket.waitUntilReady(Duration.parse("PT5S"));
+		}
+		return bucket;
+	}//getBucket
+	
+	/**
+	 *  This method returns Collection object 
+	 * @param cluster - Cluster object
+	 * @param bucketName - bucketName
+	 * @param scopeName - scopeName
+	 * @param collectionName - collectionName
+	 * @return Collection
+	 */
+	public static Collection getCollection(Cluster cluster, String bucketName, String scopeName, String collectionName) {		
+		Collection collection = getBucket(cluster, bucketName).scope(scopeName).collection(collectionName);
+		return collection;
+	}
+	
+	
 	public void runCRUD(Cluster cluster, String bucketName) {
 		if(cluster!=null) {
 
-			Bucket bucket = cluster.bucket(bucketName);
-			bucket.waitUntilReady(Duration.parse("PT5S"));	
+			Bucket bucket = getBucket(cluster, bucketName);
+
 			Collection collection = bucket.defaultCollection();
 
 			// Create a JSON Document
@@ -221,13 +261,58 @@ public class CapellaBaseDAO {
 		}//EOF if
 	}//runCRUD
 
+	/**
+	 *  Helper method to show how indexes can be created in deffered mode
+	 *  and later all build as a single go.
+	 * @param cluster - Couchbase cluster object 
+	 * @param collection - Colleciton object where defferred indexes need to be 
+	 * created.
+	 */
+	public void createIndex(Cluster cluster, Collection collection) {
+		try {
+			QueryResult queryResult = null;
+			// First index DDL
+			String indexDDL = "CREATE INDEX `idx_profile_females` "
+					+ "ON `demo`.`usa`.`profile`(UPPER(`gender`), `firstName`) "
+					+ "WHERE UPPER(`gender`)='F' "
+					+ "	WITH { 'defer_build':true}";
+			//Create a deferred index
+			queryResult = cluster.query(indexDDL);
+			
+			// Second index DDL
+			indexDDL = "CREATE INDEX `idx_profile_males` "
+					+ "ON `demo`.`usa`.`profile`(UPPER(`gender`), `firstName`) "
+					+ "WHERE UPPER(`gender`)='M' "
+					+ "	WITH { 'defer_build':true}";
+			
+			//Create second deferred index
+			queryResult = cluster.query(indexDDL);
+			
+			if(queryResult!=null) {
+				System.out.print("Index created: ");
+				// Build any deferred indexes within `bucketName`.scopeName.collectionName
+				collection.queryIndexes().buildDeferredIndexes();
+			}
+
+		} catch (IndexExistsException e) {
+			System.out.println("Index already exists: " + e.getMessage());
+		}
+	}//createIndex
+	
+	
 	public static void main(String[] args) {
 
 		//		Cluster cluster = CapellaBaseDAO.getClusterFromKeyStore(endpoint, username, password, keystorePath, keystorePass);
-		//		Cluster cluster = CapellaBaseDAO.getClusterFromRootCert(endpoint, username, password);
-		Cluster cluster = CapellaBaseDAO.getClusterFromClientCert(endpoint, keystorePath, keystorePass);
+		Cluster cluster = CapellaBaseDAO.getClusterFromRootCert(endpoint, username, password, certPath);
+		//		Cluster cluster = CapellaBaseDAO.getClusterFromClientCert(endpoint, keystorePath, keystorePass);
+		
+		
 		CapellaBaseDAO baseDAO = new CapellaBaseDAO();
 		baseDAO.runCRUD(cluster, bucketName);
+		
+		//Collection where index need to be defined
+		Collection collection = CapellaBaseDAO.getCollection(cluster, "demo", "usa", "profile");
+		baseDAO.createIndex(cluster, collection);
 
 
 	}//main()

@@ -13,19 +13,20 @@ public class UserInterface {
 	public static void help() {
 
 		System.out.println("\n$java -jar bootstrap.jar [OPTION] ...\n\n"
-				+ " This program will connect to Couchbase cluster via endpoint\n "
-				+ " and other required argument and perform single document\n"
-				+ " UPSERT followed by READ operation. If you see an JSON output\n"
-				+ " that means you can reach the cluster and perform CRUD \n"
-				+ "operation on it.\n\n"
+				+ " This program will connect to Couchbase cluster via cluster \n"
+				+ "(public/private) endpoint and other required argument to \n"
+				+ "perform single document UPSERT followed by READ operation. \n"
+				+ "If you see an output that means you can reach the cluster\n "
+				+ "and perform CRUD operation on it.\n\n"
 
 				+ " Options: \n"
-				+ "-e, --endpoint			Couchbase cluster (IP or DNS or SRV)\n"
-				+ "-s, --storepath			Keystore path where the certificates are imported (/path/to/my.keystore)\n"
-				+ "-k, --storepass			Keystore password \n"
+				+ "-e, --endpoint			Couchbase cluster (IP or public or private endpoint)\n"
+				+ "-c, --certpath			Path where the Capella certificate is downloaded (/path/to/ca.pem)\n"
 				+ "-b, --bucket			Bucket name to use, where Database user can perform R/W operation\n"		 
-				+ "-u, --username			(optional) Database username with bucket R/W access \n"
-				+ "-p, --password			(optional) Database username password \n"
+				+ "-u, --username			Database username with bucket R/W access \n"
+				+ "-p, --password			Database username password \n"
+				+ "-s, --storepath			(optional) Keystore path where the certificates are imported (/path/to/my.keystore)\n"
+				+ "-k, --storepass			(optional) Keystore password \n"
 				+ "-h, --help			Usage help\n"
 
 				+ "");
@@ -48,15 +49,18 @@ public class UserInterface {
 			System.out.println("Couchbase cluster endpoint is a required field (-e, --endpoint). Try again.\n");
 			System.exit(0);
 		}
-		//make sure keystore path is mentioned
-		if(!(ht.containsKey("-s") || ht.containsKey("--storepath"))) {
-			System.out.println("Keystore path is a required field (-s, --storepath). Try again.\n");
+		//make sure either certPat or keystore path is mentioned
+		if((!(ht.containsKey("-c") || ht.containsKey("--certpath"))) && 
+				(!(ht.containsKey("-s") || ht.containsKey("--storepath")))) {
+			System.out.println("Either use -c or -s option to securly connect to Capella");
 			System.exit(0);
 		}
 
-		//make sure keystore password is mentioned
-		if(!(ht.containsKey("-k") || ht.containsKey("--storepass"))) {
-			System.out.println("Keystore password is a required field (-k, --storepass). Try again.\n");
+
+		//make sure keystore password is mentioned when -s or --storepath option is used
+		if(((ht.containsKey("-s") || ht.containsKey("--storepath"))) && 
+				!(ht.containsKey("-k") || ht.containsKey("--storepass"))) {
+			System.out.println("Keystore password is a required when keystore is used (-k, --storepass). Try again.\n");
 			System.exit(0);
 		}
 
@@ -105,6 +109,9 @@ public class UserInterface {
 			if(index<0) {
 				endpoint="couchbases://"+endpoint;
 			}
+			
+			String certPath = ht.get("-c");
+			certPath = StringUtil.isNullOrEmpty(certPath)?ht.get("--certpath"):certPath;
 
 			String keystorePath = ht.get("-s");
 			keystorePath = StringUtil.isNullOrEmpty(keystorePath)?ht.get("--storepath"):keystorePath;
@@ -124,11 +131,13 @@ public class UserInterface {
 			System.out.println("endpoint: " + endpoint + " bucket: " + bucket + 
 					" keystorePath: " + keystorePath + " keystorePassword: " + 
 					keystorePassword 
-					+ " username: " + username + " password: " + password);
+					+ " username: " + username + " password: " + password + " certpath: " + certPath);
 
 			Cluster cluster = null;
 			//Now based on input arguments decide which method to use
-			if(StringUtil.isNullOrEmpty(username) || StringUtil.isNullOrEmpty(password)) {
+			if(!StringUtil.isNullOrEmpty(certPath)) {
+				cluster = CapellaBaseDAO.getClusterFromRootCert(endpoint, username, password, certPath);
+			}else if(StringUtil.isNullOrEmpty(username) || StringUtil.isNullOrEmpty(password)) {
 				cluster = CapellaBaseDAO.getClusterFromClientCert(endpoint, keystorePath, keystorePassword);
 			}else {
 				cluster = CapellaBaseDAO.getClusterFromKeyStore(endpoint, username, password, keystorePath, keystorePassword);
